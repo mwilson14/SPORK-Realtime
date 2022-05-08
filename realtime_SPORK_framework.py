@@ -109,8 +109,8 @@ def spork_realtime(zdrlev, kdplev, REFlev, REFlev1, big_storm, calibration, stat
     f.flush()
     
     #Load ML algorithm
-    forest_loaded = pickle.load(open('NewDataRandomForest.pkl', 'rb'))
-    forest_loaded_col = pickle.load(open('NewDataRandomForest_COLUMNS.pkl', 'rb'))
+    forest_loaded = pickle.load(open('NewData2022RandomForest.pkl', 'rb'))
+    forest_loaded_col = pickle.load(open('NewDataRandomForest_2022COLUMNS.pkl', 'rb'))
     forest_loaded_mesos = pickle.load(open('NewDataRandomForest_MESOS.pkl', 'rb'))
 
     #Actual algorithm code starts here
@@ -243,7 +243,7 @@ def spork_realtime(zdrlev, kdplev, REFlev, REFlev1, big_storm, calibration, stat
                 ffd_lons, ffd_lats, ffd_Rangles, Z0C_arl1 = get_RAP_data_realtime(cenlon, cenlat)
                 
                 radar_z = radar.altitude['data']
-                Z0C_arl = Z0C_arl1 - radar_z*units('m')
+                Z0C_arl = Z0C_arl1 - (radar_z*units('m') - 250 * units('m'))
 
                 ffd_grid = interpolate_to_points(np.asarray([np.ndarray.flatten(ffd_lons), np.ndarray.flatten(ffd_lats)]).T,
                                                 np.ndarray.flatten(ffd_Rangles.magnitude-86),
@@ -264,7 +264,7 @@ def spork_realtime(zdrlev, kdplev, REFlev, REFlev1, big_storm, calibration, stat
                     ffd_lons, ffd_lats, ffd_Rangles, Z0C_arl1 = get_RAP_data_realtime(cenlon, cenlat)
                     
                     radar_z = radar.altitude['data']
-                    Z0C_arl = Z0C_arl1 - radar_z*units('m')
+                    Z0C_arl = Z0C_arl1 - (radar_z*units('m') - 250 * units('m'))
 
                     ffd_grid = interpolate_to_points(np.asarray([np.ndarray.flatten(ffd_lons), np.ndarray.flatten(ffd_lats)]).T,
                                                     np.ndarray.flatten(ffd_Rangles.magnitude-86),
@@ -468,7 +468,7 @@ def spork_realtime(zdrlev, kdplev, REFlev, REFlev1, big_storm, calibration, stat
 
             #Set up projection for area calculations
             proj = partial(pyproj.transform, pyproj.Proj(init='epsg:4326'),
-                       pyproj.Proj(init='epsg:3857'))
+                       pyproj.Proj("+proj=aea +lat_1=37.0 +lat_2=41.0 +lat_0=39.0 +lon_0=-106.55"))
 
             #Main part of storm tracking algorithm starts by looping through all contours looking for Z centroids
             #This method for breaking contours into polygons based on this stack overflow tutorial:
@@ -512,17 +512,18 @@ def spork_realtime(zdrlev, kdplev, REFlev, REFlev1, big_storm, calibration, stat
             plt.savefig('testfig.png')
             print('Testfig Saved')
 
-            if len(max_lons_c) > 0:
-                #Calling zdr_arc_section; Create ZDR arc objects using a similar method as employed in making the storm objects
-                [zdr_storm_lon,zdr_storm_lat,zdr_dist,zdr_forw,zdr_back,zdr_areas,zdr_centroid_lon,zdr_centroid_lat,zdr_mean,zdr_cc_mean,zdr_max,zdr_masks,zdr_outlines,ax,f] = zdrarc(zdrc,ZDRmasked,CC,REF,grad_ffd,grad_mag,KDP,forest_loaded,ax,f,time_start,month,d_beg,h_beg,min_beg,sec_beg,d_end,h_end,min_end,sec_end,rlons,rlats,max_lons_c,max_lats_c,zdrlev,proj,ffd_storms,Outer_r,Inner_r,tracking_ind)
-
-
+            if len(max_lons_c) > 0:      
+                
                 #Calling hail_section; Identify Hail core objects in a similar way to the ZDR arc objects
                 [hail_areas,hail_centroid_lon,hail_centroid_lat,hail_storm_lon,hail_storm_lat,ax,f] = hail_objects(hailc,REF_Hail2,ax,f,time_start,month,d_beg,h_beg,min_beg,sec_beg,d_end,h_end,min_end,sec_end,rlons,rlats,max_lons_c,max_lats_c,proj)
 
 
                 #Calling zhh_section; Identify 35dBz storm area in a similar way to the ZDR arc objects
                 [zhh_areas,zhh_centroid_lon,zhh_centroid_lat,zhh_storm_lon,zhh_storm_lat,zhh_max,zhh_core_avg] = zhh_objects(zhhc,REFmasked,rlons,rlats,max_lons_c,max_lats_c,proj)
+                
+                [zdr_storm_lon,zdr_storm_lat,zdr_dist,zdr_forw,zdr_back,zdr_areas,zdr_centroid_lon,zdr_centroid_lat,zdr_mean,zdr_cc_mean,zdr_max,zdr_masks,zdr_outlines,ax,f] = zdrarc(zdrc,ZDRmasked,CC,REF,grad_ffd,grad_mag,KDP,forest_loaded,ax,f,time_start,month,d_beg,h_beg,min_beg,sec_beg,d_end,h_end,min_end,sec_end,rlons,rlats,max_lons_c,max_lats_c,zdrlev,proj,ffd_storms,Outer_r,Inner_r,tracking_ind)
+
+
 
 
                 #Calling kdpfoot_section; Identify KDP foot objects in a similar way to the ZDR arc objects
@@ -1244,6 +1245,9 @@ def spork_realtime(zdrlev, kdplev, REFlev, REFlev1, big_storm, calibration, stat
             o_sp_angle = np.asarray(p_sp_angle) - np.asarray(storm_dirs)
             b_sp_angle = np.asarray(p_sp_angle) - np.asarray(Bunkers_m)
             o_sp_angle[np.asarray(p_sp_angle)==0.0] = np.nan
+            #Take care of angles > 180 degrees or situations where the angles cross the 0 degree line.
+            o_sp_angle[np.abs(o_sp_angle)> 180] = (360 - np.abs(o_sp_angle[np.abs(o_sp_angle)> 180])) * (-1*(o_sp_angle[np.abs(o_sp_angle)> 180]/np.abs(o_sp_angle[np.abs(o_sp_angle)> 180])))
+            b_sp_angle[np.abs(b_sp_angle)> 180] = (360 - np.abs(b_sp_angle[np.abs(b_sp_angle)> 180])) * (-1*(b_sp_angle[np.abs(b_sp_angle)> 180]/np.abs(b_sp_angle[np.abs(b_sp_angle)> 180])))
             
             #Now record all data in a Pandas dataframe.
             new_cells = pd.DataFrame({
